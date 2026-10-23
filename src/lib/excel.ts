@@ -37,8 +37,10 @@ const COLUMN_ALIASES: Record<keyof ColumnMapping, string[]> = {
     "e mail", "emailaddress",
   ],
   phone: [
-    "phone", "phone number", "mobile", "mobile number", "رقم الهاتف", "هاتف",
-    "رقم الجوال", "جوال", "tel", "telephone",
+    "phone", "phone number", "phonenumber", "mobile", "mobile number", "mobilenumber",
+    "رقم الهاتف", "هاتف", "رقم التليفون", "تليفون", "رقم الموبايل", "موبايل", "الرقم",
+    "رقم الواتس", "رقم الواتساب", "whatsapp", "tel", "telephone", "phone_number",
+    "phone_no", "mobile_no", "contact",
   ],
   registrationId: [
     "registration id", "reg id", "id", "ticket id", "registration number",

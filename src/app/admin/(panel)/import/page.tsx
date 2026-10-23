@@ -180,13 +180,36 @@ export default function ImportPage() {
     setFileBuffer(null);
   }
 
+  function downloadTemplate() {
+    import("xlsx").then((XLSX) => {
+      const data = [
+        ["Full Name", "Email", "Phone Number", "Registration ID", "Organization"],
+        ["Mohammed Tarek", "mohammed@example.com", "01284621015", "REG-001", "GDG Community"],
+        ["Ahmed Ali", "ahmed@example.com", "01098765432", "REG-002", "Beni-Suef University"],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Attendees");
+      XLSX.writeFile(wb, "gdg_attendees_template.xlsx");
+      toast.success("Excel template downloaded with Phone Number column!");
+    });
+  }
+
   return (
     <div className="animate-fade-in max-w-4xl mx-auto">
-      <div className="page-header">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="page-title">Import Attendees</h1>
           <p className="text-sm text-gray-500 mt-1">Upload your registration spreadsheet to import attendees</p>
         </div>
+        <button
+          onClick={downloadTemplate}
+          className="btn-secondary btn-sm self-start sm:self-auto flex items-center gap-2"
+          title="Download ready-to-fill Excel template"
+        >
+          <Download size={15} className="text-gdg-blue" />
+          Download Excel Template
+        </button>
       </div>
 
       {/* Steps Indicator */}
@@ -270,6 +293,28 @@ export default function ImportPage() {
             Match each required field to the correct column in your spreadsheet.
             Auto-detection has been applied where possible.
           </p>
+
+          {/* Helpful note if Phone column is not in the uploaded file */}
+          {!preview.headers.some((h) => ["phone", "mobile", "هاتف", "موبايل"].some((alias) => h.toLowerCase().includes(alias))) && (
+            <div className="mb-6 p-4 bg-amber-50 rounded-xl border border-amber-200/80 flex items-start gap-3">
+              <span className="text-xl">💡</span>
+              <div className="text-xs text-amber-900 leading-relaxed">
+                <strong className="text-sm font-bold">تريد إضافة عمود رقم الهاتف (Phone Number)؟</strong><br />
+                الخيارات في القائمة المنسدلة هي الأعمدة الموجودة في شيت الإكسيل الذي رفعته (شيتك الحالي به فقط: <strong>{preview.headers.join("، ")}</strong>).<br />
+                لإدراج أرقام الهواتف، افتح شيت الإكسيل وأضف عمود جديد باسم <strong>Phone Number</strong> أو <strong>رقم الهاتف</strong> واكتب تحته الأرقام، ثم اضغط <strong>Back</strong> وأعد رفع الملف وسيتعرف عليه النظام فوراً.
+                <div className="mt-2.5">
+                  <button
+                    type="button"
+                    onClick={downloadTemplate}
+                    className="btn-secondary btn-sm bg-white text-xs inline-flex items-center gap-1.5 shadow-sm font-medium"
+                  >
+                    <Download size={13} className="text-gdg-blue" />
+                    تحميل نموذج إكسيل جاهز به عمود رقم الهاتف (Template)
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-4 mb-6">
             {FIELDS.map(({ key, label, required }) => (

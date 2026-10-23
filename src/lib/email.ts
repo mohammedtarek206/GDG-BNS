@@ -1,4 +1,6 @@
 import { Resend } from "resend";
+import fs from "fs";
+import path from "path";
 
 export interface SendTicketEmailParams {
   to: string;
@@ -27,8 +29,11 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{
     const resend = new Resend(apiKey);
     const from = process.env.EMAIL_FROM || "GDG Event <noreply@gdgbns.online>";
 
-    // Prepare attachments: attach QR Code as a PNG attachment
-    const attachments: Array<{ filename: string; content: Buffer }> = [];
+    // Prepare attachments: attach QR Code as a CID inline attachment
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const attachments: Array<any> = [];
+    let hasQrAttachment = false;
+
     if (params.qrDataUrl && params.qrDataUrl.includes("base64,")) {
       try {
         const base64Content = params.qrDataUrl.split("base64,")[1];
@@ -36,14 +41,33 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{
           attachments.push({
             filename: `Ticket-${params.ticketReference}-QR.png`,
             content: Buffer.from(base64Content, "base64"),
+            content_id: "ticket-qr-code",
           });
+          hasQrAttachment = true;
         }
       } catch (e) {
         console.warn("Failed to attach QR buffer:", e);
       }
     }
 
-    const html = buildTicketEmailHtml(params);
+    // DevFest Logo CID inline attachment
+    let hasLogoAttachment = false;
+    try {
+      const logoPath = path.join(process.cwd(), "public", "devfest-logo.png");
+      if (fs.existsSync(logoPath)) {
+        const logoBuffer = fs.readFileSync(logoPath);
+        attachments.push({
+          filename: "devfest-logo.png",
+          content: logoBuffer,
+          content_id: "devfest-logo",
+        });
+        hasLogoAttachment = true;
+      }
+    } catch (e) {
+      console.warn("Failed to attach DevFest logo:", e);
+    }
+
+    const html = buildTicketEmailHtml(params, hasLogoAttachment, hasQrAttachment);
     const text = buildTicketEmailText(params);
 
     const { data, error } = await resend.emails.send({
@@ -65,22 +89,24 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{
   }
 }
 
-function buildTicketEmailHtml(params: SendTicketEmailParams): string {
+function buildTicketEmailHtml(
+  params: SendTicketEmailParams,
+  hasLogoAttachment: boolean,
+  hasQrAttachment: boolean
+): string {
   const {
     recipientName,
     eventName,
     eventDate,
     eventVenue,
     ticketReference,
-    qrDataUrl,
-    logoUrl,
     supportEmail,
     ticketUrl,
   } = params;
 
-  // Use public endpoint image if available, otherwise fallback
-  const qrImageUrl = params.qrImageUrl || `${ticketUrl}/qr`;
-  const hasValidLogo = logoUrl && (logoUrl.startsWith("http://") || logoUrl.startsWith("https://"));
+  const qrImageUrl = hasQrAttachment
+    ? "cid:ticket-qr-code"
+    : params.qrImageUrl || `${ticketUrl}/qr`;
 
   return `<!DOCTYPE html>
 <html lang="en" dir="ltr">
@@ -96,7 +122,13 @@ function buildTicketEmailHtml(params: SendTicketEmailParams): string {
         <!-- Header -->
         <tr>
           <td style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 50%,#1d4ed8 100%);padding:36px 32px;text-align:center;">
-            <!-- Brand Dots -->
+            ${hasLogoAttachment ? `
+            <!-- DevFest Logo Badge -->
+            <div style="background:#ffffff;border-radius:14px;padding:10px 22px;display:inline-block;margin-bottom:14px;box-shadow:0 4px 14px rgba(0,0,0,0.18);">
+              <img src="cid:devfest-logo" alt="DevFest" style="height:38px;width:auto;display:block;margin:0 auto;max-width:240px;" />
+            </div>
+            ` : `
+            <!-- Brand Dots Fallback -->
             <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin-bottom:14px;">
               <tr>
                 <td style="padding:0 3px;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4285F4;"></span></td>
@@ -105,9 +137,9 @@ function buildTicketEmailHtml(params: SendTicketEmailParams): string {
                 <td style="padding:0 3px;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#34A853;"></span></td>
               </tr>
             </table>
-            ${hasValidLogo ? `<img src="${logoUrl}" alt="Event Logo" style="height:48px;margin-bottom:12px;max-width:220px;">` : ""}
-            <h1 style="color:#ffffff;margin:0;font-size:26px;font-weight:800;letter-spacing:-0.5px;">Official Event Ticket</h1>
-            <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:16px;font-weight:500;">${eventName}</p>
+            `}
+            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:800;letter-spacing:-0.5px;">Official Event Ticket</h1>
+            <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:15px;font-weight:500;">${eventName}</p>
           </td>
         </tr>
 
