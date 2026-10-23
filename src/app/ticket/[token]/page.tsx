@@ -238,14 +238,20 @@ export default async function TicketPage({
           )}
 
           {/* Footer Support */}
-          <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 text-center text-xs text-gray-400">
-            Need help? Contact{" "}
-            <a
-              href={`mailto:${settings?.supportEmail ?? "support@gdg.community"}`}
-              className="text-gdg-blue hover:underline"
-            >
-              {settings?.supportEmail ?? "support@gdg.community"}
-            </a>
+          <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 text-center text-xs text-gray-500">
+            <p>
+              Need help? Contact{" "}
+              <a
+                href={`mailto:${settings?.supportEmail ?? "support@gdg.community"}`}
+                className="text-gdg-blue hover:underline font-medium"
+              >
+                {settings?.supportEmail ?? "support@gdg.community"}
+              </a>
+            </p>
+            <p className="mt-2 text-[11px] text-gray-400">
+              Platform engineered by <span className="font-semibold text-gray-600">Mohamed Tarek</span> ·{" "}
+              <a href="tel:+201284621015" className="text-gdg-blue hover:underline">+20 128 462 1015</a>
+            </p>
           </div>
         </div>
 

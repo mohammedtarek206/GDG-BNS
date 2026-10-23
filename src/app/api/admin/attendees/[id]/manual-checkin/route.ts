@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireStaffOrAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { Attendee } from "@/models/Attendee";
 import { CheckInLog } from "@/models/CheckInLog";
@@ -10,7 +10,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await requireAdmin();
+  const session = await requireStaffOrAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {

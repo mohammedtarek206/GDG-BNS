@@ -8,13 +8,13 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await getSession();
-  if (!session.isLoggedIn || session.role !== "admin") {
+  if (!session.isLoggedIn || !["admin", "staff"].includes(session.role ?? "")) {
     redirect("/admin/login");
   }
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <AdminSidebar />
+      <AdminSidebar role={session.role as "admin" | "staff"} userName={session.name} />
       {/* Main content – offset by sidebar width */}
       <main className="flex-1 min-w-0 lg:ml-64 transition-all duration-300">
         <div className="p-4 sm:p-6 lg:p-8 min-h-screen">{children}</div>

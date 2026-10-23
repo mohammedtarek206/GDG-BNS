@@ -13,33 +13,43 @@ export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get("x-forwarded-for") ?? "unknown";
 
-    // Rate limit: 10 lookups per 5 minutes per IP
-    if (!rateLimit(`lookup:${ip}`, 10, 5 * 60 * 1000)) {
+    // Rate limit: 15 lookups per 5 minutes per IP
+    if (!rateLimit(`lookup:${ip}`, 15, 5 * 60 * 1000)) {
       return NextResponse.json({ error: "Too many lookups. Please wait a moment." }, { status: 429 });
     }
 
     const body = await req.json().catch(() => ({}));
     const result = LookupSchema.safeParse(body);
     if (!result.success) {
-      return NextResponse.json({ error: "Please enter a valid email or registration ID" }, { status: 400 });
+      return NextResponse.json({ error: "Please enter a valid email, phone number, or registration ID" }, { status: 400 });
     }
 
     const { query } = result.data;
     const cleanQuery = query.trim().toLowerCase();
+    const digitsOnly = query.replace(/\D/g, "");
 
     await connectDB();
 
+    const orConditions: Array<Record<string, unknown>> = [
+      { email: cleanQuery },
+      { registrationId: cleanQuery },
+      { phone: query.trim() },
+    ];
+
+    // If query has at least 7 digits, search phone by core digits (e.g. 01284621015 matches +201284621015)
+    if (digitsOnly.length >= 7) {
+      const coreDigits = digitsOnly.slice(-9);
+      orConditions.push({ phone: { $regex: coreDigits } });
+    }
+
     const attendee = await Attendee.findOne({
       isValid: true,
-      $or: [
-        { email: cleanQuery },
-        { registrationId: cleanQuery },
-      ],
+      $or: orConditions,
     });
 
     if (!attendee) {
       return NextResponse.json(
-        { error: "No attendee found matching this email or registration ID." },
+        { error: "No attendee found matching this email, phone number, or registration ID." },
         { status: 404 }
       );
     }

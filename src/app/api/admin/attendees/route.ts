@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireStaffOrAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { Attendee } from "@/models/Attendee";
 import { z } from "zod";
@@ -14,7 +14,7 @@ const QuerySchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const session = await requireAdmin();
+  const session = await requireStaffOrAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {

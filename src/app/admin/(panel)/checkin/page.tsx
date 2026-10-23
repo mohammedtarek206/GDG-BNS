@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   CheckCircle, XCircle, AlertTriangle, Camera, CameraOff,
-  Keyboard, RefreshCw, Volume2, VolumeX, ScanLine
+  Keyboard, RefreshCw, Volume2, VolumeX, ScanLine, SwitchCamera
 } from "lucide-react";
 
 type ScanOutcome = "idle" | "success" | "already_checked_in" | "invalid" | "revoked" | "error";
@@ -32,10 +32,13 @@ const COOLDOWN_MS = 2500;
 
 export default function CheckinPage() {
   const scannerRef = useRef<HTMLDivElement>(null);
-  const html5QrRef = useRef<unknown>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const html5QrRef = useRef<any>(null);
   const lastScanRef = useRef<{ token: string; time: number } | null>(null);
 
   const [scanning, setScanning] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [result, setResult] = useState<CheckInResult>({ outcome: "idle" });
   const [manualCode, setManualCode] = useState("");
   const [showManual, setShowManual] = useState(false);
@@ -46,7 +49,8 @@ export default function CheckinPage() {
   const playSound = useCallback((type: "success" | "error") => {
     if (!soundEnabled) return;
     try {
-      const ctx = new AudioContext();
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
@@ -69,23 +73,26 @@ export default function CheckinPage() {
   }, [soundEnabled]);
 
   const validateTicket = useCallback(async (token: string) => {
+    const cleanToken = token.trim();
+    if (!cleanToken) return;
+
     // Client-side dedup guard
     const now = Date.now();
     if (
       lastScanRef.current &&
-      lastScanRef.current.token === token &&
+      lastScanRef.current.token === cleanToken &&
       now - lastScanRef.current.time < COOLDOWN_MS
     ) {
       return;
     }
-    lastScanRef.current = { token, time: now };
+    lastScanRef.current = { token: cleanToken, time: now };
 
     setLoading(true);
     try {
       const res = await fetch("/api/checkin/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token: cleanToken }),
       });
 
       if (!res.ok && res.status === 0) {
@@ -110,62 +117,128 @@ export default function CheckinPage() {
     }
   }, [playSound]);
 
-  async function startScanner() {
-    if (!scannerRef.current) return;
+  const stopScanner = useCallback(async () => {
+    if (html5QrRef.current) {
+      try {
+        if (html5QrRef.current.isScanning) {
+          await html5QrRef.current.stop();
+        }
+        await html5QrRef.current.clear();
+      } catch (err) {
+        console.warn("Error stopping scanner:", err);
+      }
+      html5QrRef.current = null;
+    }
+    setScanning(false);
+    setIsStarting(false);
+  }, []);
+
+  const startScannerWithMode = useCallback(async (mode: "environment" | "user") => {
     setCameraError("");
+    setIsStarting(true);
+
+    // Check secure context
+    if (
+      typeof window !== "undefined" &&
+      window.location.protocol !== "https:" &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1"
+    ) {
+      setCameraError("Camera access requires HTTPS or localhost. Please ensure your site is on HTTPS.");
+      setIsStarting(false);
+      return;
+    }
+
+    // Check mediaDevices support
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Camera API is not supported on this browser. Please use Chrome or Safari.");
+      setIsStarting(false);
+      return;
+    }
 
     try {
-      // Dynamically import to avoid SSR issues
+      // Clean up previous instance if any
+      await stopScanner();
+
+      // Dynamically import Html5Qrcode
       const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode("qr-reader");
       html5QrRef.current = scanner;
 
-      // Prefer rear camera
-      const cameras = await Html5Qrcode.getCameras();
-      const backCamera = cameras.find((c) =>
-        c.label.toLowerCase().includes("back") ||
-        c.label.toLowerCase().includes("rear") ||
-        c.label.toLowerCase().includes("environment")
-      );
-      const cameraId = backCamera?.id ?? (cameras[0]?.id ?? { facingMode: "environment" });
-
-      await scanner.start(
-        cameraId,
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText: string) => {
-          // Extract token from URL if needed
-          let token = decodedText;
-          try {
-            const url = new URL(decodedText);
-            const parts = url.pathname.split("/");
-            token = parts[parts.length - 1];
-          } catch { /* not a URL */ }
-
-          if (token) validateTicket(token);
+      const qrConfig = {
+        fps: 15,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.max(160, Math.floor(minEdge * 0.72));
+          return { width: size, height: size };
         },
-        undefined
-      );
-      setScanning(true);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Camera error";
-      setCameraError(msg.includes("permission") ? "Camera permission denied" : msg);
-    }
-  }
+        aspectRatio: 1.0,
+      };
 
-  async function stopScanner() {
-    if (html5QrRef.current) {
+      const handleDecoded = (decodedText: string) => {
+        let token = decodedText.trim();
+        try {
+          const url = new URL(token);
+          const parts = url.pathname.split("/").filter(Boolean);
+          if (parts.length > 0) {
+            token = parts[parts.length - 1];
+          }
+        } catch { /* not a URL */ }
+
+        if (token) validateTicket(token);
+      };
+
       try {
-        const { Html5Qrcode } = await import("html5-qrcode");
-        await (html5QrRef.current as InstanceType<typeof Html5Qrcode>).stop();
-      } catch { /* ignore */ }
-      html5QrRef.current = null;
+        // Try requested facing mode (default: environment/back camera)
+        await scanner.start({ facingMode: mode }, qrConfig, handleDecoded, undefined);
+      } catch (firstErr) {
+        console.warn(`Failed to start camera with ${mode}, attempting fallback...`, firstErr);
+        // Fallback to the other facing mode or generic camera
+        const fallbackMode = mode === "environment" ? "user" : "environment";
+        try {
+          await scanner.start({ facingMode: fallbackMode }, qrConfig, handleDecoded, undefined);
+          setFacingMode(fallbackMode);
+        } catch {
+          // Fallback to any available camera ID
+          const cameras = await Html5Qrcode.getCameras();
+          if (cameras && cameras.length > 0) {
+            await scanner.start(cameras[0].id, qrConfig, handleDecoded, undefined);
+          } else {
+            throw firstErr;
+          }
+        }
+      }
+
+      setScanning(true);
+    } catch (err: unknown) {
+      console.error("Camera start error:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("notallowed")) {
+        setCameraError("Camera permission denied. Please allow camera access in your browser settings.");
+      } else if (msg.toLowerCase().includes("notfound") || msg.toLowerCase().includes("devices")) {
+        setCameraError("No camera device found on this system.");
+      } else {
+        setCameraError(`Camera error: ${msg}`);
+      }
+      await stopScanner();
+    } finally {
+      setIsStarting(false);
     }
-    setScanning(false);
-  }
+  }, [stopScanner, validateTicket]);
+
+  const toggleCameraFacing = async () => {
+    const nextMode = facingMode === "environment" ? "user" : "environment";
+    setFacingMode(nextMode);
+    if (scanning) {
+      await startScannerWithMode(nextMode);
+    }
+  };
 
   useEffect(() => {
-    return () => { stopScanner(); };
-  }, []);
+    return () => {
+      stopScanner();
+    };
+  }, [stopScanner]);
 
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -185,7 +258,7 @@ export default function CheckinPage() {
             <ScanLine size={24} className="text-gdg-blue" />
             Check-in Scanner
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Scan attendee QR tickets to check them in</p>
+          <p className="text-sm text-gray-500 mt-1">Scan attendee QR tickets for rapid check-in</p>
         </div>
         <button
           onClick={() => setSoundEnabled(!soundEnabled)}
@@ -247,50 +320,89 @@ export default function CheckinPage() {
         </div>
       </div>
 
-      {/* Camera Scanner */}
+      {/* Camera Scanner Card */}
       <div className="card overflow-hidden mb-4">
         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-semibold text-gdg-navy flex items-center gap-2">
             <Camera size={16} />
             Camera Scanner
           </h2>
-          {scanning ? (
-            <button onClick={stopScanner} className="btn-danger btn-sm">
-              <CameraOff size={14} />
-              Stop
-            </button>
-          ) : (
-            <button onClick={startScanner} className="btn-primary btn-sm">
-              <Camera size={14} />
-              Start Camera
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {scanning && (
+              <button
+                onClick={toggleCameraFacing}
+                className="btn-secondary btn-sm"
+                title="Switch Camera (Front/Rear)"
+              >
+                <SwitchCamera size={14} />
+                Flip
+              </button>
+            )}
+            {scanning ? (
+              <button onClick={stopScanner} className="btn-danger btn-sm">
+                <CameraOff size={14} />
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={() => startScannerWithMode(facingMode)}
+                disabled={isStarting}
+                className="btn-primary btn-sm"
+              >
+                {isStarting ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Camera size={14} />
+                    Start Camera
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {cameraError && (
           <div className="p-4 bg-red-50 border-b border-red-100">
-            <p className="text-sm text-red-600 flex items-center gap-2">
-              <AlertTriangle size={14} />
+            <p className="text-sm text-red-600 flex items-center gap-2 font-medium">
+              <AlertTriangle size={16} className="flex-shrink-0" />
               {cameraError}
             </p>
-            <p className="text-xs text-red-400 mt-1">
-              Use HTTPS in production. Camera permissions must be granted.
-              Use manual entry below as fallback.
+            <p className="text-xs text-red-500 mt-2 leading-relaxed">
+              💡 Ensure camera permission is granted in your browser. You can also use the manual entry below to type or paste ticket codes.
             </p>
           </div>
         )}
 
         <div className="p-4">
+          {/* Reader container - NEVER display:none when scanner initializes */}
           <div
             id="qr-reader"
             ref={scannerRef}
-            className={`w-full ${scanning ? "min-h-[300px]" : "hidden"}`}
+            className={`w-full overflow-hidden rounded-xl bg-slate-900 ${
+              scanning || isStarting ? "min-h-[280px]" : "hidden"
+            }`}
           />
-          {!scanning && !cameraError && (
-            <div className="flex flex-col items-center gap-3 py-8 text-gray-400">
-              <Camera size={40} className="opacity-30" />
-              <p className="text-sm">Click &quot;Start Camera&quot; to begin scanning</p>
-              <p className="text-xs">Make sure to allow camera access when prompted</p>
+
+          {!scanning && !isStarting && !cameraError && (
+            <div className="flex flex-col items-center gap-3 py-10 text-gray-400">
+              <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 mb-1">
+                <Camera size={32} />
+              </div>
+              <p className="text-sm font-medium text-gray-600">Click &quot;Start Camera&quot; to begin scanning</p>
+              <p className="text-xs text-gray-400 text-center max-w-xs">
+                Allows scanning directly with your phone or laptop camera
+              </p>
+            </div>
+          )}
+
+          {isStarting && (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-500 gap-3">
+              <RefreshCw size={28} className="animate-spin text-gdg-blue" />
+              <p className="text-xs font-medium">Requesting camera access...</p>
             </div>
           )}
         </div>

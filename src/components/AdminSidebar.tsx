@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -16,31 +16,41 @@ import {
   ChevronRight,
   Shield,
   FileSpreadsheet,
+  UserCheck,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-const NAV_ITEMS = [
-  { href: "/admin/dashboard", label: "Dashboard", labelAr: "لوحة التحكم", icon: LayoutDashboard },
-  { href: "/admin/import", label: "Import Attendees", labelAr: "استيراد الحضور", icon: FileSpreadsheet },
-  { href: "/admin/attendees", label: "Attendees", labelAr: "المشاركون", icon: Users },
-  { href: "/admin/tickets", label: "QR Tickets", labelAr: "التذاكر", icon: QrCode },
-  { href: "/admin/emails", label: "Email Manager", labelAr: "إدارة البريد", icon: Mail },
-  { href: "/admin/checkin", label: "Check-in Scanner", labelAr: "الفحص", icon: ScanLine },
-  { href: "/admin/reports", label: "Reports", labelAr: "التقارير", icon: BarChart2 },
-  { href: "/admin/staff", label: "Staff", labelAr: "الفريق", icon: Shield },
-  { href: "/admin/settings", label: "Event Settings", labelAr: "إعدادات الحدث", icon: Settings },
+const ALL_NAV_ITEMS = [
+  { href: "/admin/dashboard", label: "Dashboard", labelAr: "لوحة التحكم", icon: LayoutDashboard, adminOnly: true },
+  { href: "/admin/checkin", label: "Check-in Scanner", labelAr: "الفحص", icon: ScanLine, adminOnly: false },
+  { href: "/admin/attendees", label: "Attendees", labelAr: "المشاركون", icon: Users, adminOnly: false },
+  { href: "/admin/tickets", label: "QR Tickets", labelAr: "التذاكر", icon: QrCode, adminOnly: false },
+  { href: "/admin/import", label: "Import Attendees", labelAr: "استيراد الحضور", icon: FileSpreadsheet, adminOnly: true },
+  { href: "/admin/emails", label: "Email Manager", labelAr: "إدارة البريد", icon: Mail, adminOnly: true },
+  { href: "/admin/reports", label: "Reports", labelAr: "التقارير", icon: BarChart2, adminOnly: true },
+  { href: "/admin/staff", label: "Staff", labelAr: "الفريق", icon: Shield, adminOnly: true },
+  { href: "/admin/settings", label: "Event Settings", labelAr: "إعدادات الحدث", icon: Settings, adminOnly: true },
 ];
 
 interface SidebarProps {
   locale?: "en" | "ar";
+  role?: "admin" | "staff";
+  userName?: string;
 }
 
-export function AdminSidebar({ locale = "en" }: SidebarProps) {
+export function AdminSidebar({ locale = "en", role = "admin", userName }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const navItems = ALL_NAV_ITEMS.filter((item) => {
+    if (role === "staff") {
+      return !item.adminOnly;
+    }
+    return true;
+  });
 
   async function handleLogout() {
     setIsLoggingOut(true);
@@ -88,12 +98,17 @@ export function AdminSidebar({ locale = "en" }: SidebarProps) {
         {/* Logo Area */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
           <div className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden bg-white/10">
-            <span className="text-sm font-bold">GDG</span>
+            <span className="text-sm font-bold text-gdg-blue">GDG</span>
           </div>
           {!collapsed && (
             <div className="min-w-0">
               <p className="text-sm font-bold truncate">GDG Event</p>
-              <p className="text-xs text-white/50 truncate">Admin Panel</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${role === "admin" ? "bg-blue-400" : "bg-emerald-400"}`} />
+                <p className="text-xs text-white/70 capitalize truncate">
+                  {role === "staff" ? "Staff Portal" : "Admin Panel"}
+                </p>
+              </div>
             </div>
           )}
           <button
@@ -113,10 +128,23 @@ export function AdminSidebar({ locale = "en" }: SidebarProps) {
           </button>
         </div>
 
+        {/* User Badge if available */}
+        {!collapsed && userName && (
+          <div className="px-4 py-3 mx-3 my-2 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gdg-blue/20 text-gdg-blue flex items-center justify-center font-bold text-xs flex-shrink-0">
+              <UserCheck size={14} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-white truncate">{userName}</p>
+              <p className="text-[10px] text-white/50 uppercase tracking-wider">{role}</p>
+            </div>
+          </div>
+        )}
+
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3">
+        <nav className="flex-1 overflow-y-auto py-3 px-3">
           <ul className="space-y-1">
-            {NAV_ITEMS.map(({ href, label, labelAr, icon: Icon }) => {
+            {navItems.map(({ href, label, labelAr, icon: Icon }) => {
               const isActive = pathname === href || pathname.startsWith(href + "/");
               return (
                 <li key={href}>

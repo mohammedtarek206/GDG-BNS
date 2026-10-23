@@ -56,7 +56,14 @@ async function getDashboardStats() {
   };
 }
 
+import { getSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
+
 export default async function DashboardPage() {
+  const session = await getSession();
+  if (session.role === "staff") {
+    redirect("/admin/checkin");
+  }
   const stats = await getDashboardStats();
   return <DashboardClient stats={stats} />;
 }

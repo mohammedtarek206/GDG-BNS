@@ -31,7 +31,11 @@ export default function AdminLoginPage() {
       }
 
       toast.success("Welcome back!");
-      router.push("/admin/dashboard");
+      if (data.role === "staff") {
+        router.push("/admin/checkin");
+      } else {
+        router.push("/admin/dashboard");
+      }
       router.refresh();
     } catch {
       setError("Network error. Please try again.");
