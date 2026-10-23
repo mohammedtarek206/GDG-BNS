@@ -12,6 +12,10 @@ async function main() {
   const atlasConn = await mongoose.createConnection(ATLAS_URI).asPromise();
   console.log("Connected to Atlas.");
 
+  if (!localConn.db || !atlasConn.db) {
+    throw new Error("Database connection not ready");
+  }
+
   const collections = await localConn.db.listCollections().toArray();
   console.log(`Found ${collections.length} collections in local database:`);
 
