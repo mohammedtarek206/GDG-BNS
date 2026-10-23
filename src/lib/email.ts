@@ -24,7 +24,7 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{
     }
 
     const resend = new Resend(apiKey);
-    const from = process.env.EMAIL_FROM || "GDG Event <onboarding@resend.dev>";
+    const from = process.env.EMAIL_FROM || "GDG Event <noreply@gdgbns.online>";
 
     const html = buildTicketEmailHtml(params);
     const text = buildTicketEmailText(params);
