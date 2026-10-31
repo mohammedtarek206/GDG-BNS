@@ -378,13 +378,19 @@ export default function CheckinPage() {
         )}
 
         <div className="p-4">
-          {/* Reader container - NEVER display:none when scanner initializes */}
+          {/* 
+            IMPORTANT: qr-reader must ALWAYS be in the DOM and visible before scanner.start() is called.
+            Using height + overflow instead of display:none to avoid black screen / init failure.
+          */}
           <div
             id="qr-reader"
             ref={scannerRef}
-            className={`w-full overflow-hidden rounded-xl bg-slate-900 ${
-              scanning || isStarting ? "min-h-[280px]" : "hidden"
-            }`}
+            style={{
+              height: scanning || isStarting ? "auto" : "0px",
+              minHeight: scanning || isStarting ? "280px" : "0px",
+              overflow: "hidden",
+            }}
+            className="w-full rounded-xl bg-slate-900 [&_video]:w-full [&_video]:h-full [&_video]:object-cover [&_video]:rounded-xl"
           />
 
           {!scanning && !isStarting && !cameraError && (
